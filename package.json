@@ -1,0 +1,26 @@
+{
+  "name": "ai-todo-be",
+  "version": "1.0.0",
+  "description": "Backend API for AI-powered To-Do List with Google Gemini integration",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "@google/genai": "^2.24.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  },
+  "keywords": [
+    "todo",
+    "gemini",
+    "ai",
+    "express",
+    "poc"
+  ],
+  "author": "sujayk46",
+  "license": "MIT"
+}
