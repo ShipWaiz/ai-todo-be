@@ -8,18 +8,28 @@ import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Safe directory resolution across ESM and Netlify CJS bundles
+let currentDir = process.cwd();
+try {
+  if (typeof __dirname !== 'undefined') {
+    currentDir = __dirname;
+  } else if (typeof import.meta !== 'undefined' && import.meta && typeof import.meta.url === 'string') {
+    currentDir = path.dirname(fileURLToPath(import.meta.url));
+  }
+} catch (e) {
+  currentDir = process.cwd();
+}
 
 const IS_SERVERLESS = Boolean(
   process.env.NETLIFY || 
   process.env.AWS_LAMBDA_FUNCTION_NAME || 
-  process.env.LAMBDA_TASK_ROOT
+  process.env.LAMBDA_TASK_ROOT ||
+  process.env.LAMBDA_RUNTIME_DIR
 );
 
 const DATA_FILE = IS_SERVERLESS
   ? path.join('/tmp', 'todos.json')
-  : path.join(__dirname, 'data', 'todos.json');
+  : path.join(currentDir, 'data', 'todos.json');
 
 // Ensure directory exists if possible
 try {
@@ -326,7 +336,12 @@ app.use('/api', router);
 app.use('/.netlify/functions/api', router);
 app.use('/', router);
 
-if (!IS_SERVERLESS) {
+const isDirectRun = !IS_SERVERLESS && (
+  process.argv[1]?.endsWith('server.js') ||
+  process.env.STANDALONE === 'true'
+);
+
+if (isDirectRun) {
   app.listen(PORT, () => {
     console.log(`Backend server running on http://localhost:${PORT}`);
   });
