@@ -10,7 +10,88 @@ dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const DATA_FILE = path.join(__dirname, 'data', 'todos.json');
+
+const IS_SERVERLESS = Boolean(
+  process.env.NETLIFY || 
+  process.env.AWS_LAMBDA_FUNCTION_NAME || 
+  process.env.LAMBDA_TASK_ROOT
+);
+
+const DATA_FILE = IS_SERVERLESS
+  ? path.join('/tmp', 'todos.json')
+  : path.join(__dirname, 'data', 'todos.json');
+
+// Ensure directory exists if possible
+try {
+  const dir = path.dirname(DATA_FILE);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+} catch (e) {
+  // Silent fallback for restricted environments
+}
+
+// In-memory fallback
+let memoryTodos = null;
+
+const initialTodos = [
+  {
+    id: '1',
+    text: 'Explore AI-powered To-Do app features',
+    completed: true,
+    priority: 'high',
+    category: 'Work',
+    createdAt: new Date(Date.now() - 3600000).toISOString()
+  },
+  {
+    id: '2',
+    text: 'Try "Smart Breakdown" to split a big project into actionable steps',
+    completed: false,
+    priority: 'high',
+    category: 'Learning',
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: '3',
+    text: 'Review GitHub repositories and invite team members',
+    completed: false,
+    priority: 'medium',
+    category: 'Work',
+    createdAt: new Date().toISOString()
+  }
+];
+
+function loadTodos() {
+  if (memoryTodos) return memoryTodos;
+  try {
+    if (fs.existsSync(DATA_FILE)) {
+      const data = fs.readFileSync(DATA_FILE, 'utf-8');
+      memoryTodos = JSON.parse(data);
+      return memoryTodos;
+    }
+  } catch (err) {
+    console.warn('Filesystem read note:', err.message);
+  }
+  memoryTodos = [...initialTodos];
+  saveTodos(memoryTodos);
+  return memoryTodos;
+}
+
+function saveTodos(todos) {
+  memoryTodos = todos;
+  try {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(todos, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('Filesystem write note:', err.message);
+  }
+}
+
+// Helper to get Gemini client
+function getGeminiClient(customApiKey) {
+  const apiKey = customApiKey || process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+  return new GoogleGenAI({ apiKey });
+}
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -18,76 +99,29 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// Ensure data folder and file exists
-if (!fs.existsSync(path.join(__dirname, 'data'))) {
-  fs.mkdirSync(path.join(__dirname, 'data'), { recursive: true });
-}
+// Main router
+const router = express.Router();
 
-function loadTodos() {
-  try {
-    if (fs.existsSync(DATA_FILE)) {
-      const data = fs.readFileSync(DATA_FILE, 'utf-8');
-      return JSON.parse(data);
-    }
-  } catch (err) {
-    console.error('Error reading todos file:', err.message);
-  }
-  // Default sample todos
-  const initialTodos = [
-    {
-      id: '1',
-      text: 'Explore AI-powered To-Do app features',
-      completed: true,
-      priority: 'high',
-      category: 'Work',
-      createdAt: new Date(Date.now() - 3600000).toISOString()
-    },
-    {
-      id: '2',
-      text: 'Try "Smart Breakdown" to split a big project into actionable steps',
-      completed: false,
-      priority: 'high',
-      category: 'Learning',
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: '3',
-      text: 'Review GitHub repositories and invite team members',
-      completed: false,
-      priority: 'medium',
-      category: 'Work',
-      createdAt: new Date().toISOString()
-    }
-  ];
-  saveTodos(initialTodos);
-  return initialTodos;
-}
-
-function saveTodos(todos) {
-  try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(todos, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('Error saving todos file:', err.message);
-  }
-}
-
-// Helper to get Gemini client if API key is configured
-function getGeminiClient(customApiKey) {
-  const apiKey = customApiKey || process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
-  return new GoogleGenAI({ apiKey });
-}
+// Health check
+router.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'ai-todo-be',
+    serverless: IS_SERVERLESS,
+    timestamp: new Date().toISOString()
+  });
+});
 
 // --- CRUD Routes ---
 
 // Get all todos
-app.get('/api/todos', (req, res) => {
+router.get('/todos', (req, res) => {
   const todos = loadTodos();
   res.json({ success: true, count: todos.length, data: todos });
 });
 
 // Create new todo
-app.post('/api/todos', (req, res) => {
+router.post('/todos', (req, res) => {
   const { text, priority = 'medium', category = 'General', dueDate = null } = req.body;
   if (!text || text.trim() === '') {
     return res.status(400).json({ success: false, error: 'Task text is required' });
@@ -110,7 +144,7 @@ app.post('/api/todos', (req, res) => {
 });
 
 // Update todo
-app.put('/api/todos/:id', (req, res) => {
+router.put('/todos/:id', (req, res) => {
   const { id } = req.params;
   const updates = req.body;
   const todos = loadTodos();
@@ -123,7 +157,7 @@ app.put('/api/todos/:id', (req, res) => {
   todos[index] = {
     ...todos[index],
     ...updates,
-    id: todos[index].id, // Prevent ID change
+    id: todos[index].id,
     updatedAt: new Date().toISOString()
   };
 
@@ -132,7 +166,7 @@ app.put('/api/todos/:id', (req, res) => {
 });
 
 // Delete todo
-app.delete('/api/todos/:id', (req, res) => {
+router.delete('/todos/:id', (req, res) => {
   const { id } = req.params;
   const todos = loadTodos();
   const filtered = todos.filter(t => t.id !== id);
@@ -147,8 +181,8 @@ app.delete('/api/todos/:id', (req, res) => {
 
 // --- AI Endpoints ---
 
-// 1. AI Task Breakdown: Takes a high-level goal and generates actionable subtasks
-app.post('/api/ai/breakdown', async (req, res) => {
+// 1. AI Task Breakdown
+router.post('/ai/breakdown', async (req, res) => {
   const { goal, apiKey: clientApiKey } = req.body;
   if (!goal || goal.trim() === '') {
     return res.status(400).json({ success: false, error: 'Goal description is required' });
@@ -177,7 +211,6 @@ Format:
       });
 
       const responseText = response.text || '';
-      // Clean possible markdown code fences
       const cleaned = responseText.replace(/```json\s*|```/g, '').trim();
       const tasks = JSON.parse(cleaned);
       return res.json({ success: true, source: 'gemini-3.8-flash', tasks });
@@ -186,7 +219,6 @@ Format:
     }
   }
 
-  // Fallback intelligent breakdown if no Gemini key or rate limited
   const fallbackTasks = [
     { text: `Research best practices and define requirements for "${goal}"`, priority: 'high', category: 'Planning' },
     { text: `Draft initial plan and gather necessary resources`, priority: 'medium', category: 'Work' },
@@ -198,13 +230,13 @@ Format:
   res.json({
     success: true,
     source: 'smart-fallback',
-    message: gemini ? 'Gemini response parsed with fallback' : 'Note: Configure GEMINI_API_KEY in .env for live Gemini 3.8 Flash model generation',
+    message: gemini ? 'Gemini response parsed with fallback' : 'Note: Configure GEMINI_API_KEY for live Gemini 3.8 Flash generation',
     tasks: fallbackTasks
   });
 });
 
-// 2. AI Prioritize & Recommendations: Analyzes existing todos and gives priority advice
-app.post('/api/ai/prioritize', async (req, res) => {
+// 2. AI Prioritize & Recommendations
+router.post('/ai/prioritize', async (req, res) => {
   const todos = loadTodos();
   const uncompleted = todos.filter(t => !t.completed);
 
@@ -221,7 +253,7 @@ app.post('/api/ai/prioritize', async (req, res) => {
 
   if (gemini) {
     try {
-      const prompt = `Analyze these pending tasks and provide a concise, high-value summary of what the user should focus on first, which task is the quickest win, and actionable advice:
+      const prompt = `Analyze these pending tasks and provide a concise summary of what the user should focus on first, which task is the quickest win, and actionable advice:
 ${JSON.stringify(uncompleted.map(t => ({ id: t.id, text: t.text, priority: t.priority, category: t.category })))}
 
 Return ONLY valid JSON:
@@ -244,7 +276,6 @@ Return ONLY valid JSON:
     }
   }
 
-  // Fallback heuristic
   const highPriority = uncompleted.find(t => t.priority === 'high') || uncompleted[0];
   const quickWin = uncompleted.find(t => t.priority === 'low') || uncompleted[uncompleted.length - 1];
 
@@ -257,8 +288,8 @@ Return ONLY valid JSON:
   });
 });
 
-// 3. AI Daily Briefing: Quick motivating status summary
-app.post('/api/ai/briefing', async (req, res) => {
+// 3. AI Daily Briefing
+router.post('/ai/briefing', async (req, res) => {
   const todos = loadTodos();
   const pending = todos.filter(t => !t.completed);
   const done = todos.filter(t => t.completed);
@@ -290,11 +321,15 @@ app.post('/api/ai/briefing', async (req, res) => {
   });
 });
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'ai-todo-be', timestamp: new Date().toISOString() });
-});
+// Mount routes flexibly for /api, /.netlify/functions/api, and root
+app.use('/api', router);
+app.use('/.netlify/functions/api', router);
+app.use('/', router);
 
-app.listen(PORT, () => {
-  console.log(`Backend server running on http://localhost:${PORT}`);
-});
+if (!IS_SERVERLESS) {
+  app.listen(PORT, () => {
+    console.log(`Backend server running on http://localhost:${PORT}`);
+  });
+}
+
+export default app;

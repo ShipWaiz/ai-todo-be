@@ -1,0 +1,53 @@
+name: Deploy Backend to Netlify
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Verify Function Export
+        run: |
+          node -e "import('./netlify/functions/api.js').then(m => { if (typeof m.handler !== 'function') throw new Error('Invalid handler'); console.log('✓ Netlify function handler verified'); })"
+
+      - name: Deploy to Netlify (Production)
+        if: github.ref == 'refs/heads/main' && env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID_BE }}
+        run: |
+          npx netlify-cli deploy --prod --dir=. --functions=netlify/functions
+
+      - name: Deploy to Netlify (Preview)
+        if: github.event_name == 'pull_request' && env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID_BE }}
+        run: |
+          npx netlify-cli deploy --dir=. --functions=netlify/functions
+
+      - name: Pipeline Notice if Secrets Missing
+        if: env.NETLIFY_AUTH_TOKEN == '' || env.NETLIFY_SITE_ID == ''
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID_BE }}
+        run: |
+          echo "::notice ::To enable automated GitHub Actions deployment, add NETLIFY_AUTH_TOKEN and NETLIFY_SITE_ID_BE in GitHub Repository Secrets, or connect the repository directly in Netlify dashboard."
