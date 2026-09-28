@@ -112,6 +112,24 @@ app.use(express.json());
 // Main router
 const router = express.Router();
 
+// Root API overview
+router.get('/', (req, res) => {
+  res.json({
+    service: 'AI Smart To-Do Backend API',
+    status: 'online',
+    serverless: IS_SERVERLESS,
+    message: 'Backend is active and responding on Netlify!',
+    endpoints: {
+      todos: '/api/todos',
+      health: '/api/health',
+      aiBreakdown: 'POST /api/ai/breakdown',
+      aiPrioritize: 'POST /api/ai/prioritize',
+      aiBriefing: 'POST /api/ai/briefing'
+    },
+    hint: 'Open your ai-todo-fe Netlify site to view and interact with the full web UI!'
+  });
+});
+
 // Health check
 router.get('/health', (req, res) => {
   res.json({
