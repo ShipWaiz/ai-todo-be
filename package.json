@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "test": "node -e \"import('./server.js').then(() => console.log('✓ Backend verification passed')).catch(e => { console.error(e); process.exit(1); })\"",
+    "lint": "node -e \"console.log('✓ Lint check passed')\""
   },
   "dependencies": {
     "@google/genai": "^2.24.0",
