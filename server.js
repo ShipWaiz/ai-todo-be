@@ -351,17 +351,27 @@ router.post('/ai/briefing', async (req, res) => {
   });
 });
 
+// Health check aliases for all container platforms
+const healthHandler = (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'ai-todo-be',
+    serverless: IS_SERVERLESS,
+    timestamp: new Date().toISOString()
+  });
+};
+
+router.get('/health', healthHandler);
+router.get('/healthz', healthHandler);
+router.get('/api/health', healthHandler);
+router.get('/ping', healthHandler);
+
 // Mount routes flexibly for /api, /.netlify/functions/api, and root
 app.use('/api', router);
 app.use('/.netlify/functions/api', router);
 app.use('/', router);
 
-const isDirectRun = !IS_SERVERLESS && (
-  process.argv[1]?.endsWith('server.js') ||
-  process.env.STANDALONE === 'true'
-);
-
-if (isDirectRun) {
+if (!IS_SERVERLESS) {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Backend server running on http://0.0.0.0:${PORT}`);
   });
