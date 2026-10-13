@@ -3,7 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import url, { fileURLToPath, pathToFileURL } from 'url';
 import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
@@ -371,7 +371,17 @@ app.use('/api', router);
 app.use('/.netlify/functions/api', router);
 app.use('/', router);
 
-if (!IS_SERVERLESS) {
+const isTesting = process.env.NODE_ENV === 'test' || process.env.npm_lifecycle_event === 'test';
+
+// Only start the server when run directly (e.g. node server.js / npm start), not when imported by tests or Netlify functions
+const isDirectRun = !IS_SERVERLESS && !isTesting && Boolean(
+  process.argv[1] && (
+    process.argv[1].endsWith('server.js') ||
+    (typeof import.meta !== 'undefined' && import.meta?.url && pathToFileURL(process.argv[1]).href === import.meta.url)
+  )
+);
+
+if (isDirectRun) {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Backend server running on http://0.0.0.0:${PORT}`);
   });
