@@ -5,6 +5,16 @@
 [functions]
   node_bundler = "esbuild"
 
+# Deploy Contexts for Environments
+[context.production]
+  environment = { NODE_ENV = "production", DEPLOY_ENV = "PROD" }
+
+[context.qa]
+  environment = { NODE_ENV = "qa", DEPLOY_ENV = "QA" }
+
+[context.dev]
+  environment = { NODE_ENV = "development", DEPLOY_ENV = "DEV" }
+
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"

@@ -118,6 +118,8 @@ router.get('/', (req, res) => {
     service: 'AI Smart To-Do Backend API',
     status: 'online',
     serverless: IS_SERVERLESS,
+    environment: process.env.BRANCH ? `Netlify [${process.env.BRANCH.toUpperCase()}]` : (IS_SERVERLESS ? 'Netlify Serverless' : 'Local Node.js'),
+    branch: process.env.BRANCH || (process.env.NODE_ENV === 'production' ? 'production' : 'local'),
     message: 'Backend is active and responding on Netlify!',
     endpoints: {
       todos: '/api/todos',
